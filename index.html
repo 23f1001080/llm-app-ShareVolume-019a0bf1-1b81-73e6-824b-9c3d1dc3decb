@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Shares Outstanding</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .data-section {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .data-card {
+            background-color: #eaf2f8;
+            padding: 20px;
+            border-radius: 5px;
+            flex: 1;
+            margin: 0 10px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .data-card h2 {
+            color: #3498db;
+            margin-top: 0;
+            font-size: 1.2em;
+        }
+        .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2980b9;
+            margin-top: 10px;
+        }
+        .year {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        .loading-message {
+            text-align: center;
+            font-style: italic;
+            color: #555;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="share-entity-name">Loading Company...</h1>
+
+        <div class="data-section">
+            <div class="data-card max-card">
+                <h2>Maximum Shares Outstanding</h2>
+                <div class="value" id="share-max-value">Loading...</div>
+                <div class="year" id="share-max-fy">Loading...</div>
+            </div>
+            <div class="data-card min-card">
+                <h2>Minimum Shares Outstanding</h2>
+                <div class="value" id="share-min-value">Loading...</div>
+                <div class="year" id="share-min-fy">Loading...</div>
+            </div>
+        </div>
+        <p class="loading-message" id="loading-status"></p>
+    </div>
+
+    <script>
+        const DEFAULT_CIK = '0001097149'; // Align Technology
+        const SEC_API_BASE_URL = 'https://data.sec.gov/api/xbrl/companyconcept/';
+        const AIPipe_PROXY = 'https://api.allorigins.win/get?url='; // Generic proxy
+
+        async function fetchCompanyData(cik) {
+            document.getElementById('loading-status').textContent = `Fetching data for CIK ${cik}...`;
+            const secApiUrl = `${SEC_API_BASE_URL}CIK${cik}/dei/EntityCommonStockSharesOutstanding.json`;
+            let response;
+            try {
+                const proxiedUrl = `${AIPipe_PROXY}${encodeURIComponent(secApiUrl)}`;
+                response = await fetch(proxiedUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const rawData = await response.json();
+                // Allorigins wraps the actual JSON in a 'contents' string
+                const actualData = JSON.parse(rawData.contents);
+                return processCompanyConceptData(actualData);
+
+            } catch (error) {
+                console.error(`Error fetching data for CIK ${cik}:`, error);
+                document.getElementById('loading-status').textContent = `Error loading data for CIK ${cik}. Please try again later.`;
+                return null;
+            }
+        }
+
+        function processCompanyConceptData(rawData) {
+            const entityName = rawData.entityName;
+            const sharesData = rawData.units.shares;
+
+            const filteredShares = sharesData.filter(entry =>
+                parseInt(entry.fy) > 2020 && typeof entry.val === 'number'
+            );
+
+            if (filteredShares.length === 0) {
+                return {
+                    entityName: entityName,
+                    max: { val: 'N/A', fy: 'N/A' },
+                    min: { val: 'N/A', fy: 'N/A' }
+                };
+            }
+
+            let maxValEntry = filteredShares[0];
+            let minValEntry = filteredShares[0];
+
+            for (const entry of filteredShares) {
+                if (entry.val > maxValEntry.val) {
+                    maxValEntry = entry;
+                }
+                if (entry.val < minValEntry.val) {
+                    minValEntry = entry;
+                }
+            }
+
+            return {
+                entityName: entityName,
+                max: {
+                    val: maxValEntry.val,
+                    fy: maxValEntry.fy.toString()
+                },
+                min: {
+                    val: minValEntry.val,
+                    fy: minValEntry.fy.toString()
+                }
+            };
+        }
+
+        function updateUI(data) {
+            if (!data) {
+                document.title = 'Error Loading Data';
+                document.getElementById('share-entity-name').textContent = 'Error Loading Company Data';
+                document.getElementById('share-max-value').textContent = 'N/A';
+                document.getElementById('share-max-fy').textContent = '';
+                document.getElementById('share-min-value').textContent = 'N/A';
+                document.getElementById('share-min-fy').textContent = '';
+                document.getElementById('loading-status').textContent = '';
+                return;
+            }
+
+            document.title = `${data.entityName} Shares Outstanding`;
+            document.getElementById('share-entity-name').textContent = data.entityName;
+            document.getElementById('share-max-value').textContent = data.max.val.toLocaleString();
+            document.getElementById('share-max-fy').textContent = `(FY ${data.max.fy})`;
+            document.getElementById('share-min-value').textContent = data.min.val.toLocaleString();
+            document.getElementById('share-min-fy').textContent = `(FY ${data.min.fy})`;
+            document.getElementById('loading-status').textContent = '';
+        }
+
+        async function initializeApp() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const cikParam = urlParams.get('CIK');
+            let dataToDisplay = null;
+
+            if (cikParam && cikParam.match(/^\d{10}$/)) { // Validate CIK is 10 digits
+                dataToDisplay = await fetchCompanyData(cikParam);
+            } else {
+                dataToDisplay = await fetchCompanyData(DEFAULT_CIK);
+            }
+            updateUI(dataToDisplay);
+        }
+
+        initializeApp();
+    </script>
+</body>
+</html>
