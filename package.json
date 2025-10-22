@@ -1,0 +1,15 @@
+{
+  "name": "align-technology-shares",
+  "version": "1.0.0",
+  "description": "Web application to display Align Technology's common stock shares outstanding data from SEC EDGAR.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
